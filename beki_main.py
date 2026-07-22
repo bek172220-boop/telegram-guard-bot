@@ -1,70 +1,38 @@
 import asyncio
-from pyrogram import Client, filters
+from telethon import TelegramClient, events
 
-# ===== የአንተ መረጃዎች =====
-API_ID = 37468042
-API_HASH = "49635e8940adec0c1661229e9ad56a81"
-MY_ADMIN_ID = 6391190160
+# 1. Python Asyncio Event Loop Fix (ለ Render ሰርቨር ተስማሚ ለማድረግ)
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
 
-app = Client("my_guard_account", api_id=API_ID, api_hash=API_HASH)
+# 2. የቴሌግራም API መረጃዎችህ
+api_id = 20779777
+api_hash = 'ed5f0e388147d4e339ffca9e504c5a9b'
 
-pending_users = {}
+# Telegram Client ማስነሳት
+client = TelegramClient('my_guard_account', api_id, api_hash, loop=loop)
 
-AUTO_REPLY_TEXT = (
-    "ሰላም! 👋\n\n"
-    "ወደ Bereket አካውንት እንኳን ደህና መጡ።\n"
-    "እባክዎን ከእኔ ጋር ለመነጋገር የመጡበትን **ዋና ምክንያት/ሀሳብ** እዚህ ይጻፉ።\n\n"
-    "መልእክትዎ ሲደርሰኝ አይቼ ከተስማማሁ ውይይቱን እጀምራለሁ።"
-)
+# 3. አዲሱ የመልእክት ፅሁፍ
+RESPONSE_TEXT = """ሰላም! 👋
 
-@app.on_message(filters.private & ~filters.me & ~filters.bot)
-async def handle_incoming(client, message):
-    user_id = message.from_user.id
+ወደ Beki  አካውንት እንኳን ደህና መጡ።
+እባክዎን ከእኔ ጋር ለመነጋገር የመጡበትን ዋና ምክንያት/ሀሳብ እዚህ ይጻፉ።
+
+መልእክትዎ ሲደርሰኝ አሳውቄ ነግረዎታለው ።"""
+
+@client.on(events.NewMessage(incoming=True))
+async def handle_new_message(event):
+    # ግሩፕ ወይም ቻናል ከሆነ ምንም አይልካም (ለግል መልእክት ብቻ)
+    if not event.is_private:
+        return
+
+    sender = await event.get_sender()
     
-    if pending_users.get(user_id) == "APPROVED":
-        return
+    # የላከው ሰው ከስልክህ ኮንታክት (Contact) ውጪ ከሆነ ብቻ መልእክት ይልካል
+    if sender and not getattr(sender, 'contact', False):
+        await event.reply(RESPONSE_TEXT)
 
-    if user_id not in pending_users:
-        pending_users[user_id] = "WAITING_FOR_REASON"
-        await message.reply_text(AUTO_REPLY_TEXT)
-        return
+print("Bot is running...")
+client.start()
+client.run_until_disconnected()
 
-    if pending_users.get(user_id) == "WAITING_FOR_REASON":
-        reason = message.text
-        pending_users[user_id] = "PENDING_APPROVAL"
-        
-        user_info = (
-            f"👤 **አዲስ ሰው መነጋገር ይፈልጋል!**\n\n"
-            f"• **ስም:** {message.from_user.first_name}\n"
-            f"• **Username:** @{message.from_user.username}\n"
-            f"• **ID:** `{user_id}`\n\n"
-            f"📝 **የመጣበት ምክንያት:**\n{reason}\n\n"
-            f"-----------------------------------\n"
-            f"👉 **ለመፍቀድ ይላኩ:** `/ok {user_id}`\n"
-            f"👉 **ለማገድ ይላኩ:** `/no {user_id}`"
-        )
-        
-        await client.send_message("me", user_info)
-        await message.reply_text("አመሰግናለሁ! የቀረበው ሀሳብ ተልኳል። ምላሽ እስኪያገኝ ድረስ ይቆዩ።")
-
-@app.on_message(filters.me & filters.command(["ok", "no"]))
-async def handle_approval(client, message):
-    try:
-        command = message.command[0]
-        target_user_id = int(message.command[1])
-
-        if command == "ok":
-            pending_users[target_user_id] = "APPROVED"
-            await message.reply_text(f"✅ ለ `{target_user_id}` ፈቅደሃል። አሁን ማውራት ትችላላችሁ።")
-            await client.send_message(target_user_id, "ሀሳብዎ ተቀባይነት አግኝቷል! አሁን መነጋገር ይችላሉ።")
-        
-        elif command == "no":
-            pending_users[target_user_id] = "DENIED"
-            await message.reply_text(f"❌ ለ `{target_user_id}` ውድቅ ተደርጓል።")
-            await client.send_message(target_user_id, "ይቅርታ፣ በአሁኑ ወቅት ጥያቄዎን መቀበል አልተቻለም።")
-            
-    except Exception as e:
-        await message.reply_text("⚠️ እባክዎን ትክክለኛ ቅርጽ ይጠቀሙ! (ምሳሌ፡ `/ok 12345678`)")
-
-print("🤖 ቦቱ በስኬት ስራ ጀምሯል!")
-app.run()
